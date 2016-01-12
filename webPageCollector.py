@@ -33,7 +33,7 @@ class WebPageCollector:
 	@Param queue_size: The size of queue to hold collected data
 	@Param is_debug: Output debug info if this param is set to True
 	'''
-	def __init__(self, batch_size=100, wait_time_for_event=5.0, queue_size=1000, is_debug=False):
+	def __init__(self, batch_size=200, wait_time_for_event=5.0, queue_size=1000, is_debug=False):
 		
 		self.batch_size = batch_size
 		self.wait_time_for_event = wait_time_for_event
@@ -61,6 +61,10 @@ class WebPageCollector:
 		except Exception as e:
 			print "[Error] %s" % str(e)
 
+	def pop(self):
+
+		return self.queue.get(block=True)
+
 	def set_user_agant(self, user_agent):
 		''' optional '''
 
@@ -80,6 +84,8 @@ class WebPageCollector:
 	@Return: Void
 	'''
 	def __collect(self, urls):
+
+		b_time = time.time()
 
 		while urls != None and len(urls) > 0:
 
@@ -120,6 +126,8 @@ class WebPageCollector:
 		# crawling finished
 		self.queue.put(None, block=True)
 			
+		e_time = time.time()
+		print "Total Time Consuming: %f Seconds" % (e_time-b_time)
 
 	'''
 	@Func: Crawling web page accroding to their ip, 
@@ -336,18 +344,17 @@ if __name__ == "__main__":
 	web_page_collector.set_urls(urls)
 	web_page_collector.start()
 
-
-
+	os.system("rm -r ./data/")
+	os.system("mkdir data")
 	c = 0
 	while True:
 
-		item = web_page_collector.queue.get(block=True)
+		item = web_page_collector.pop()
 		if item == None:
 			break
 
-		#print item[0]
-		#print item[1]
-		#print "================================="
-
 		c += 1
+		with open("./data/"+str(c), "wb") as fo:
+			fo.write(item[0]+"\n")
+			fo.write(item[1])
 		print c
