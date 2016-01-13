@@ -1,4 +1,5 @@
 import os
+import re
 import errno
 import time
 		
@@ -97,7 +98,8 @@ class WebPageCollector:
 					print hosts[i], uris[i]
 
 			# convert host to ip
-			ips = [socket.gethostbyname(host) for host in hosts]
+			ips = self.__get_ip(hosts)
+			#ips = [socket.gethostbyname(host) for host in hosts]
 
 			if self.is_debug:
 				for ip in ips:
@@ -193,6 +195,7 @@ class WebPageCollector:
 						if self.__read_to_buff(fd_2_sock[fd], fd_2_data[fd]) == True:
 							if self.__has_finished_data_sending(fd_2_data[fd]):
 								http_return_code = self.__get_http_return_code(fd_2_data[fd].data)
+								print "HTTP " + http_return_code
 								if http_return_code == "301" or http_return_code == "302":
 									urls_redirect.append( self.__get_redirect_url(fd_2_data[fd].data) )
 								else:
@@ -202,6 +205,7 @@ class WebPageCollector:
 						else:
 							if self.__has_finished_data_sending(fd_2_data[fd]):
 								http_return_code = self.__get_http_return_code(fd_2_data[fd].data)
+								print "HTTP " + http_return_code
 								if http_return_code == "301" or http_return_code == "302":
 									urls_redirect.append( self.__get_redirect_url(fd_2_data[fd].data) )
 								else:
@@ -214,29 +218,8 @@ class WebPageCollector:
 		print "Time Consuming Of Crawling Data: %f seconds" % (time.time()-b)
 
 		# return redirect urls of HTTP_301 and HTTP_302
+		print "HTTP 301 Number: %d" % len(urls_redirect)
 		return urls_redirect
-
-
-	def __get_http_return_code(self, data):
-		
-		i = data.find("HTTP/1.1 ")
-		if i >= 0:
-			b = i + len("HTTP/1.1 ")
-			e = data.find(" ", b)
-			code = data[b:e]
-			return code
-		else:
-			return None
-
-	def __get_redirect_url(self, data):
-
-		try:
-			b = data.index("location:") + len("location:")
-		except:
-			b = data.find("Location:") + len("Location:")
-		e = data.find("\n", b)
-		redirect_url = data[b:e].strip()
-		return redirect_url
 
 	def __split_host_uri(self, urls):
 		
@@ -259,6 +242,23 @@ class WebPageCollector:
 			uris.append(uri)
 		
 		return hosts, uris
+
+	def __get_ip(self, hosts):
+
+		host_2_ip = {}
+		for host in hosts:
+			host_2_ip[host] = None
+
+		for (host, _) in host_2_ip.items():
+			ip = socket.gethostbyname(host)
+			host_2_ip[host] = ip
+
+		ips = []
+		for host in hosts:
+			ip = host_2_ip[host]
+			ips.append(ip)
+
+		return ips
 
 	def __generate_request(self, url):
 
@@ -293,34 +293,37 @@ class WebPageCollector:
 		return  True if buff.data is a complete response data
 		'''
 
+		pattern_TE = re.compile(r"[Tt]ransfer-[Ee]ncoding")
+		pattern_CL = re.compile(r"[Cc]ontent-[Ll]ength")
+
 		if not buff.page_type:
-			if buff.data.find("Transfer-Encoding") >= 0 or buff.data.find("transfer-encoding") >= 0:
+			if re.search(pattern_TE, buff.data) != None:
 				buff.page_type = "TE"
-			elif buff.data.find("Content-Length") >= 0 or buff.data.find("content-length") >= 0:
+			elif re.search(pattern_CL, buff.data) != None:
 				buff.page_type = "CL"
 			else:
 				return False
 	
 		if buff.page_type == "TE":
-			#print "hi, i am Transfer-Encoding"
 			if buff.data.find("\r\n0\r\n\r\n") >= 0:
-				#print "read over!"
 				return True
 			else:
 				return False
 		
 		elif buff.page_type == "CL":
-			#print "hi, i am Content-Length"
 			if not buff.content_length:
 				b = buff.data.find("Content-Length:")
 				if b < 0:
 					b = buff.data.find("content-length:")
+					if b < 0:
+						b = buff.data.find("Content-length:")
+				#b = buff.data.find(pattern_CL)
+				#print "b : " + str(b)
 				b += len("Content-Length:")
 				e = buff.data.find("\r\n", b)
 				buff.content_length = int(buff.data[b:e].strip())
 			b_content = buff.data.find("\r\n\r\n")+len("\r\n\r\n")
 			if len(buff.data) - b_content == buff.content_length:
-				#print "read over!"
 				return True
 			else:
 				return False
@@ -328,18 +331,39 @@ class WebPageCollector:
 		else:
 			raise ValueError("page_type error")
 
+	def __get_http_return_code(self, data):
+		
+		i = data.find("HTTP/1.1 ")
+		if i >= 0:
+			b = i + len("HTTP/1.1 ")
+			e = data.find(" ", b)
+			code = data[b:e]
+			return code
+		else:
+			return None
+
+	def __get_redirect_url(self, data):
+
+		try:
+			b = data.index("location:") + len("location:")
+		except:
+			b = data.find("Location:") + len("Location:")
+		e = data.find("\n", b)
+		redirect_url = data[b:e].strip()
+		return redirect_url
+
 
 if __name__ == "__main__":
 
 	#urls = []
-	#urls.append("http://bj.meituan.com/category/meishi")
+	#urls.append("http://www.meituan.com/shop/318")
 	#urls.append("http://www.cnblogs.com/li0803/archive/2008/11/03/1324746.html")
 	#urls.append("http://baike.baidu.com/view/5255837.htm")
 	#urls.append("localhost/haha.txt")
 
 	urls = open("urls.txt", "rb").read().strip().split()
 
-	web_page_collector = WebPageCollector(is_debug=True)
+	web_page_collector = WebPageCollector(batch_size=200, wait_time_for_event=5.0, is_debug=True)
 
 	web_page_collector.set_urls(urls)
 	web_page_collector.start()
