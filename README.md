@@ -8,16 +8,16 @@
 与urlopen函数时间效率对比<br>
 -------------------------
 实验数据：3154个美团店家主页地址<br>
-实验环境：网速4Mb/s
+实验环境：网速4Mb/s<br>
 实验一：`webPageCollector`<br>
-	$ 成功爬取3114个店家主页，漏爬率1.2%
-	$ 耗时868秒
+	* 成功爬取3114个店家主页，漏爬率1.2%
+	* 耗时868秒
 实验二：`单线程调用urlopen函数`<br>
-	$ 成功爬取3140个店家主页，漏爬率0.75%
-	$ 耗时4614秒
+	* 成功爬取3140个店家主页，漏爬率0.75%
+	* 耗时4614秒
 实验结果：<br>
-	$ 时间效率上，使用`webPageCollector`是使用`单线程调用urlopen函数`的5.31倍
-	$ 漏爬率，使用`webPageCollector`比使用`单线程调用urlopen函数`高 0.45%
+	* 时间效率上，使用`webPageCollector`是使用`单线程调用urlopen函数`的5.31倍
+	* 漏爬率，使用`webPageCollector`比使用`单线程调用urlopen函数`高 0.45%
 
 运行环境<br>
 --------
@@ -48,7 +48,7 @@ while True:
 	
 	(url, data) = item
 	print url
-	print item
+	print data
 ```
 <b>注意！：</b><br>
 <b>webPageCollector只负责请求并完整接收服务器数据</b><br>
