@@ -361,7 +361,7 @@ if __name__ == "__main__":
 	#urls.append("http://baike.baidu.com/view/5255837.htm")
 	#urls.append("localhost/haha.txt")
 
-	urls = open("urls.txt", "rb").read().strip().split()
+	urls = open("urls_large.txt", "rb").read().strip().split()
 
 	web_page_collector = WebPageCollector(batch_size=200, wait_time_for_event=5.0, is_debug=True)
 
