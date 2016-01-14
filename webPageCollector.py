@@ -17,14 +17,13 @@ class DataBuff:
 		self.page_type = None # 'Transfer-Encoding' or 'Content-Length'
 		self.content_length = None # valid only when page_type == Content-Length is True
 
-class Url:
+class Request:
 
-	def __init__(self, ip, host, uri):
+	def __init__(self, ip, header, origin_url):
 		
-		self.ip   = ip
-		self.host = host
-		self.uri  = uri
-		self.url  = host + uri
+		self.ip 		= ip
+		self.header 	= header
+		self.origin_url	= origin_url
 	
 class WebPageCollector:
 
@@ -88,6 +87,10 @@ class WebPageCollector:
 
 		b_time = time.time()
 
+		# urls are waited for crawling
+		# origin_urls are origin urls supplied by caller
+		origin_urls = urls
+
 		while urls != None and len(urls) > 0:
 
 			# extract host and uri from urls
@@ -99,7 +102,6 @@ class WebPageCollector:
 
 			# convert host to ip
 			ips = self.__get_ip(hosts)
-			#ips = [socket.gethostbyname(host) for host in hosts]
 
 			if self.is_debug:
 				for ip in ips:
@@ -108,22 +110,31 @@ class WebPageCollector:
 			# cut ips into pieces with the size of batch_size,
 			# crawling all these pieces.
 			# deal redirection with recursive.
-			urls_redirect = []
+			redirect_urls 	= []
+			next_origin_urls= []
 
 			piece = 0
 			while len(ips) - (piece+1)*self.batch_size >= 0:
 				ip   = ips[piece*self.batch_size : (piece+1)*self.batch_size]
 				host = hosts[piece*self.batch_size : (piece+1)*self.batch_size]
 				uri  = uris[piece*self.batch_size : (piece+1)*self.batch_size]
-				urls_redirect.extend( self.__collect_piece(ip, host, uri) )
+				header = self.__get_header(host, uri)
+				r_urls, o_urls = self.__collect_piece(ip, header, origin_urls)
+				redirect_urls.extend( r_urls )
+				next_origin_urls.extend( o_urls )
 				piece += 1
 			ip   = ips[piece*self.batch_size : ]
 			host = hosts[piece*self.batch_size : ]
 			uri  = uris[piece*self.batch_size : ]
-			urls_redirect.extend( self.__collect_piece(ip, host, uri) )
+			header = self.__get_header(host, uri)
+			r_urls, o_urls = self.__collect_piece(ip, header, origin_urls)
+			redirect_urls.extend( r_urls )
+			next_origin_urls.extend( o_urls )
 
 			# crawling redirection urls
-			urls = urls_redirect
+			urls = redirect_urls
+			# change origin urls
+			origin_urls = next_origin_urls
 
 		# crawling finished
 		self.queue.put(None, block=True)
@@ -134,20 +145,20 @@ class WebPageCollector:
 	'''
 	@Func: Crawling web page accroding to their ip, 
 			put them into the queue(If them is not HTTP_301 or HTTP_302)
-	@Return: Urls of HTTP_301 and HTTP_302
+	@Return: A Tuple (Urls of HTTP_301 and HTTP_302, Origin Urls)
 	'''
-	def __collect_piece(self, ip, host, uri):
+	def __collect_piece(self, ips, headers, origin_urls):
 		
 		# create sockets
 		fd_2_sock	= {}
-		fd_2_url	= {}
+		fd_2_req	= {}
 		fd_2_data	= {}
 	
-		for i in xrange(len(ip)):
+		for i in xrange(len(ips)):
 			sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			sock.setblocking(0)
 			fd_2_sock[sock.fileno()] = sock
-			fd_2_url[sock.fileno()]  = Url(ip[i], host[i], uri[i])
+			fd_2_req[sock.fileno()]  = Request(ips[i], headers[i], origin_urls[i])
 		print "Create %d Sockets Finished!" % len(fd_2_sock.items())
 	
 		# create listener
@@ -156,17 +167,18 @@ class WebPageCollector:
 		# non-blocking connect
 		for (fd, sock) in fd_2_sock.items():
 			try:
-				sock.connect( (fd_2_url[fd].ip, 80) )
+				sock.connect( (fd_2_req[fd].ip, 80) )
 			except Exception, e:
 				if e.args[0] == 115:
 					epoll.register(fd, select.EPOLLOUT)
 				else:
-					print "[Connection Error] Url %s : %s" % (fd_2_url[fd].url, str(e))
+					print "[Connection Error] Url %s : %s" % (fd_2_req[fd].origin_url, str(e))
 		print "Non-Blocking Connection Finished"
 
 		# listen connection result
 		# save redirection urls when HTTP return code is 301 or 302
-		urls_redirect = []
+		redirect_urls = []
+		origin_urls   = []
 
 		b = time.time()
 		while True:
@@ -177,11 +189,10 @@ class WebPageCollector:
 					# connection event
 					err = fd_2_sock[fd].getsockopt(socket.SOL_SOCKET, socket.SO_ERROR)
 					if err == 0:
-						req = self.__generate_request(fd_2_url[fd])
-						n_send = fd_2_sock[fd].send(req)
+						n_send = fd_2_sock[fd].send(fd_2_req[fd].header)
 						epoll.modify(fd, select.EPOLLIN)
 					else:
-						print "[Connection Error] Connect %s Fail, Errno : %d" % (fd_2_url[fd].url, err)
+						print "[Connection Error] Connect %s Fail, Errno : %d" % (fd_2_req[fd].origin_url, err)
 						fd_2_sock[fd].close()
 				elif event & select.EPOLLIN:
 					# data event
@@ -195,21 +206,21 @@ class WebPageCollector:
 						if self.__read_to_buff(fd_2_sock[fd], fd_2_data[fd]) == True:
 							if self.__has_finished_data_sending(fd_2_data[fd]):
 								http_return_code = self.__get_http_return_code(fd_2_data[fd].data)
-								print "HTTP " + http_return_code
 								if http_return_code == "301" or http_return_code == "302":
-									urls_redirect.append( self.__get_redirect_url(fd_2_data[fd].data) )
+									redirect_urls.append( self.__get_redirect_url(fd_2_data[fd].data) )
+									origin_urls.append( fd_2_req[fd].origin_url )
 								else:
-									self.queue.put( [fd_2_url[fd].url, fd_2_data[fd].data], block=True )
+									self.queue.put( [fd_2_req[fd].origin_url, fd_2_data[fd].data], block=True )
 								del fd_2_data[fd]
 							fd_2_sock[fd].close()
 						else:
 							if self.__has_finished_data_sending(fd_2_data[fd]):
 								http_return_code = self.__get_http_return_code(fd_2_data[fd].data)
-								print "HTTP " + http_return_code
 								if http_return_code == "301" or http_return_code == "302":
-									urls_redirect.append( self.__get_redirect_url(fd_2_data[fd].data) )
+									redirect_urls.append( self.__get_redirect_url(fd_2_data[fd].data) )
+									origin_urls.append( fd_2_req[fd].origin_url )
 								else:
-									self.queue.put( [fd_2_url[fd].url, fd_2_data[fd].data], block=True )
+									self.queue.put( [fd_2_req[fd].origin_url, fd_2_data[fd].data], block=True )
 								del fd_2_data[fd]
 								fd_2_sock[fd].close()
 					except Exception as e:
@@ -218,8 +229,8 @@ class WebPageCollector:
 		print "Time Consuming Of Crawling Data: %f seconds" % (time.time()-b)
 
 		# return redirect urls of HTTP_301 and HTTP_302
-		print "HTTP 301 Number: %d" % len(urls_redirect)
-		return urls_redirect
+		print "HTTP 301 Number: %d" % len(redirect_urls)
+		return (redirect_urls, origin_urls)
 
 	def __split_host_uri(self, urls):
 		
@@ -260,14 +271,22 @@ class WebPageCollector:
 
 		return ips
 
-	def __generate_request(self, url):
+	def __get_header(self, hosts, uris):
 
-		req = "GET " + url.uri + " HTTP/1.1\r\n"
+		headers = []
+		for i in xrange(len(hosts)):
+			header = self.__generate_request(hosts[i], uris[i])
+			headers.append(header)
+		return headers
+
+	def __generate_request(self, host, uri):
+
+		req = "GET " + uri + " HTTP/1.1\r\n"
 		if self.user_agent != None:
 			req += "User-Agent:" + self.user_agent + "\r\n"
 		if self.cookie != None:
 			req += "Cookie:" + self.cookie + "\r\n"
-		req += "Host:" + url.host + "\r\n"
+		req += "Host:" + host + "\r\n"
 		req += "\r\n"
 		return req
 	
@@ -355,13 +374,13 @@ class WebPageCollector:
 
 if __name__ == "__main__":
 
-	#urls = []
-	#urls.append("http://www.meituan.com/shop/318")
+	urls = []
+	urls.append("http://www.meituan.com/shop/318")
 	#urls.append("http://www.cnblogs.com/li0803/archive/2008/11/03/1324746.html")
 	#urls.append("http://baike.baidu.com/view/5255837.htm")
 	#urls.append("localhost/haha.txt")
 
-	urls = open("urls_large.txt", "rb").read().strip().split()
+	#urls = open("urls.txt", "rb").read().strip().split()
 
 	web_page_collector = WebPageCollector(batch_size=200, wait_time_for_event=5.0, is_debug=True)
 
