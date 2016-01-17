@@ -33,7 +33,7 @@ class WebPageCollector:
 	@Param queue_size: The size of queue to hold collected data
 	@Param is_debug: Output debug info if this param is set to True
 	'''
-	def __init__(self, batch_size=200, wait_time_for_event=5.0, queue_size=1000, is_debug=False):
+	def __init__(self, batch_size=200, wait_time_for_event=3.0, queue_size=1000, is_debug=False):
 		
 		self.batch_size = batch_size
 		self.wait_time_for_event = wait_time_for_event
@@ -96,16 +96,8 @@ class WebPageCollector:
 			# extract host and uri from urls
 			hosts, uris = self.__split_host_uri(urls)
 
-			if self.is_debug:
-				for i in xrange(len(hosts)):
-					print hosts[i], uris[i]
-
 			# convert host to ip
 			ips = self.__get_ip(hosts)
-
-			if self.is_debug:
-				for ip in ips:
-					print ip
 
 			# cut ips into pieces with the size of batch_size,
 			# crawling all these pieces.
@@ -194,6 +186,7 @@ class WebPageCollector:
 					else:
 						print "[Connection Error] Connect %s Fail, Errno : %d" % (fd_2_req[fd].origin_url, err)
 						fd_2_sock[fd].close()
+						del fd_2_sock[fd]
 				elif event & select.EPOLLIN:
 					# data event
 					if not fd_2_data.has_key(fd):
@@ -213,6 +206,7 @@ class WebPageCollector:
 									self.queue.put( [fd_2_req[fd].origin_url, fd_2_data[fd].data], block=True )
 								del fd_2_data[fd]
 							fd_2_sock[fd].close()
+							del fd_2_sock[fd]
 						else:
 							if self.__has_finished_data_sending(fd_2_data[fd]):
 								http_return_code = self.__get_http_return_code(fd_2_data[fd].data)
@@ -223,13 +217,25 @@ class WebPageCollector:
 									self.queue.put( [fd_2_req[fd].origin_url, fd_2_data[fd].data], block=True )
 								del fd_2_data[fd]
 								fd_2_sock[fd].close()
+								del fd_2_sock[fd]
 					except Exception as e:
-						print str(e)
+						print str(e) + "\t" + fd_2_req[fd].origin_url
+						if e.errno == errno.ECONNRESET:
+							redirect_urls.append( fd_2_req[fd].origin_url )
+							origin_urls.append( fd_2_req[fd].origin_url )
 						fd_2_sock[fd].close()
+						del fd_2_sock[fd]
 		print "Time Consuming Of Crawling Data: %f seconds" % (time.time()-b)
 
+		# put urls of uncrawled into redirect urls
+		print "The Number Of Uncrawled URLs: %d" % len(fd_2_sock.items())
+		for fd, sock in fd_2_sock.items():
+			url = fd_2_req[fd].origin_url
+			redirect_urls.append( url )
+			origin_urls.append( url )
+
 		# return redirect urls of HTTP_301 and HTTP_302
-		print "HTTP 301 Number: %d" % len(redirect_urls)
+		print "Redirection URLS Number: %d" % len(redirect_urls)
 		return (redirect_urls, origin_urls)
 
 	def __split_host_uri(self, urls):
@@ -375,14 +381,14 @@ class WebPageCollector:
 if __name__ == "__main__":
 
 	urls = []
-	urls.append("http://www.meituan.com/shop/318")
-	#urls.append("http://www.cnblogs.com/li0803/archive/2008/11/03/1324746.html")
+	#urls.append("http://www.meituan.com/shop/318")
+	#urls.append("http://www.kiford.com/e/UR123016ZE3S9GW1")
 	#urls.append("http://baike.baidu.com/view/5255837.htm")
 	#urls.append("localhost/haha.txt")
 
-	#urls = open("urls.txt", "rb").read().strip().split()
+	urls = open("urls_large.txt", "rb").read().strip().split()
 
-	web_page_collector = WebPageCollector(batch_size=200, wait_time_for_event=5.0, is_debug=True)
+	web_page_collector = WebPageCollector(batch_size=200, wait_time_for_event=3.0, is_debug=True)
 
 	web_page_collector.set_urls(urls)
 	web_page_collector.start()

@@ -10,14 +10,14 @@
 * 实验数据：3154个美团店家主页地址<br>
 * 实验环境：网速4Mb/s<br>
 * 实验一：`webPageCollector`<br>
-	* 成功爬取3114个店家主页，漏爬率1.2%<br>
+	* 成功爬取3135个店家主页，漏爬率%0.6<br>
 	* 耗时868秒<br>
 * 实验二：`单线程调用urlopen函数`<br>
-	* 成功爬取3140个店家主页，漏爬率0.75%<br>
+	* 成功爬取3140个店家主页，漏爬率0.44%<br>
 	* 耗时4614秒<br>
 * 实验结果：<br>
-	* 时间效率上，使用`webPageCollector`是使用`单线程调用urlopen函数`的5.31倍<br>
-	* 漏爬率，使用`webPageCollector`比使用`单线程调用urlopen函数`高 0.45%<br>
+	* 时间效率上，使用`webPageCollector`是使用`单线程调用urlopen函数`的 5.31倍<br>
+	* 漏爬率，使用`webPageCollector`比使用`单线程调用urlopen函数`高 0.16%<br>
 
 运行环境<br>
 --------
