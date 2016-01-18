@@ -233,6 +233,7 @@ class WebPageCollector:
 			url = fd_2_req[fd].origin_url
 			redirect_urls.append( url )
 			origin_urls.append( url )
+			sock.close()
 
 		# return redirect urls of HTTP_301 and HTTP_302
 		print "Redirection URLS Number: %d" % len(redirect_urls)

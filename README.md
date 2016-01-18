@@ -51,8 +51,8 @@ while True:
 	print data
 ```
 <b>注意！：</b><br>
-<b>webPageCollector只负责请求并完整接收服务器数据</b><br>
-<b>服务器返回数据包含HTTP协议头部和内容，返回的内容可能是UTF-8编码，可也能是经过gzip压缩的内容，需要用户自己查看数据类型并解析</b><br>
+<b>1) webPageCollector只负责请求并完整接收服务器数据，对数据的解析需要用户完成</b><br>
+<b>2) webPageCollector不会对URL进行去重，对URL去重是用户的职责</b><br>
 
 webPageCollector支持<br>
 --------------------
